@@ -1,0 +1,15 @@
+<?php
+
+/**
+* Implements hook_services_resources().
+*/
+function tournament_services_services_resources() {
+  require_once("tournament_services_resource.inc");
+
+  $resources = array(
+    '#api_version' => 3002,
+  );
+
+  $resources += _tournament_resource_definition();
+  return $resources;
+}

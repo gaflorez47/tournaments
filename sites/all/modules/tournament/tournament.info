@@ -1,0 +1,23 @@
+name = Tournament
+description = Implements a tournament management system for Drupal.
+core = 7.x
+version = 7.x-1.x
+package = Tournament
+
+dependencies[] = match
+
+; Views Handlers
+files[] = views/tournament_handler_field_entity_type.inc
+files[] = views/tournament_handler_filter_entity_type.inc
+files[] = views/tournament_handler_field_tournament_status.inc
+files[] = views/tournament_handler_filter_tournament_status.inc
+files[] = views/tournament_handler_field_tournament_participants_status.inc
+files[] = views/tournament_handler_filter_tournament_participants_status.inc
+files[] = views/tournament_handler_field_tournament_participants_rank.inc
+files[] = views/tournament_handler_filter_tournament_participants_current.inc
+; Information added by drupal.org packaging script on 2012-08-27
+version = "7.x-1.1"
+core = "7.x"
+project = "tournament"
+datestamp = "1346036553"
+

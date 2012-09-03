@@ -1,0 +1,72 @@
+<?php
+/**
+ * @file tournament_services.install
+ * Install services endpoint for external access to tournament data.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function tournament_services_install() {
+  // Add tournament services endpoint
+  $endpoint = _tournament_services_endpoint();
+
+  // To avoid PHP warning in ctools
+  $endpoint->export_type = null;
+
+  ctools_include('export');
+  services_endpoint_save($endpoint);
+
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function tournament_services_uninstall() {
+  $endpoint = _tournament_services_endpoint();
+
+  ctools_include('export');
+  services_endpoint_delete($endpoint);
+}
+
+/*
+ * Define endpoint to be added and removed upon install and uninstall
+ */
+function _tournament_services_endpoint(){
+  $endpoint = new stdClass();
+  $endpoint->disabled = FALSE; /* Edit this to true to make a default endpoint disabled initially */
+  $endpoint->api_version = 3;
+  $endpoint->name = 'tournament';
+  $endpoint->server = 'rest_server';
+  $endpoint->path = 'tournament';
+  $endpoint->authentication = array(
+    'services' => 'services',
+  );
+  $endpoint->server_settings = array();
+  $endpoint->resources = array(
+    'tournament_details' => array(
+      'operations' => array(
+        'retrieve' => array(
+          'enabled' => '1',
+        ),
+      ),
+    ),
+    'tournament_participants' => array(
+      'operations' => array(
+        'retrieve' => array(
+          'enabled' => '1',
+        ),
+      ),
+    ),
+    'tournament_match_list' => array(
+      'operations' => array(
+        'index' => array(
+          'enabled' => '1',
+        ),
+      ),
+    ),
+  );
+  $endpoint->debug = 0;
+
+  return $endpoint;
+}
