@@ -1,0 +1,165 @@
+<?php
+
+/**
+ * Implements hook_menu().
+ */
+function participants_menu() {
+  $items = array();
+
+  $items['admin/config/participants/import'] = array(
+      'title' => 'Participants',
+      'description' => 'Import participants',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('participants_upload_form'),
+      'access arguments' => array('administer site configuration'),
+      'type' => MENU_NORMAL_ITEM
+  );
+  $items['admin/config/participants/add'] = array(
+      'title' => 'Participants',
+      'description' => 'Import participants',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('participants_add_form'),
+      'access arguments' => array('administer site configuration'),
+      'type' => MENU_NORMAL_ITEM
+  );
+
+  return $items;
+}
+
+function participants_add_form(){
+  $participants = db_select('node','n')
+  ->fields('n')
+  ->condition('type', 'participant')->execute()->fetchAll();
+  $pk = array_map(function($x){return $x->nid;}, $participants);
+  $pv = array_map(function($x){return $x->title;}, $participants);
+  $participants_array = array_combine($pk, $pv);
+  
+  $tournaments = db_select('node','n')
+  ->fields('n')
+  ->condition('type', array('round_robin'), 'IN')->execute()->fetchAll();
+  $tk = array_map(function($x){return $x->nid;}, $tournaments);
+  $tv = array_map(function($x){return $x->title;}, $tournaments);
+  $tournaments_array = array_combine($tk, $tv);
+  
+  $form = array();
+  $form['all_participants'] = array(
+   '#type' => 'checkbox', 
+   '#title' => t('Select all participants'),
+  );
+  $form['participants'] = array(
+    '#type' => 'checkboxes',
+    '#options' => $participants_array,
+    '#title' => t('Participants to add'),
+  );
+  
+  foreach ($participants_array as $part_key => $part_val) {
+    $form['participants'][$part_key]= array(
+       '#states' => array(
+        'checked' =>array(
+          ':input[name=all_participants]' => array('checked' => true)
+        )
+      )
+    );
+  }
+
+  $form['all_tournaments'] = array(
+   '#type' => 'checkbox', 
+   '#title' => t('Select all tournaments'),
+  );
+
+  $form['tournaments'] = array(
+    '#type' => 'checkboxes',
+    '#options' => $tournaments_array,
+    '#title' => t('Tournaments to add'),
+  );
+  
+  foreach ($tournaments_array as $t_key => $t_val) {
+    $form['tournaments'][$t_key]= array(
+       '#states' => array(
+        'checked' =>array(
+          ':input[name=all_tournaments]' => array('checked' => true)
+        )
+      )
+    );
+  }
+  
+  $form['submit'] = array('#type' => 'submit', '#value' => t('Save'));
+  return $form;
+  
+}
+
+function participants_add_form_submit($form, &$form_state){
+  $values = $form_state['values'];
+  $participant_values = $values['participants'];
+  $tournament_values = $values['tournaments'];
+  
+  $participants = array_keys(array_filter($participant_values, function($x){return $x;}));
+  $tournaments = array_keys(array_filter($tournament_values, function($x){return $x;}));
+  
+  foreach ($tournaments as $tournament) {
+    foreach ($participants as $participant) {
+      $id = db_insert('tournament_participants')
+        ->fields(array(
+          'nid' => $tournament,
+          'id' => $participant,
+          'status' => 1,
+        ))
+        ->execute();
+    }
+  }
+  
+  drupal_set_message(var_export($participants,1));
+  drupal_set_message(var_export($tournaments,1));
+}
+
+function participants_upload_form(){
+   $form = array();
+  // If this #attribute is not present, upload will fail on submit
+  $form['file_upload'] = array(
+    '#title' => t('Upload file'),
+    '#type'  => 'file',
+  );
+  $form['submit_upload'] = array(
+    '#type'  =>  'submit', 
+    '#value'  =>  'Submit'
+  );
+  return $form;
+}
+
+function participants_upload_form_submit(){
+  $validators = array('file_validate_extensions' => array());
+  $file = file_save_upload('file_upload', $validators);
+  //$file will be 0 if the upload doesn't exist, or the $dest directory
+  //isn't writable
+  if ($file) {
+    $path = $file->destination;
+    $content = file_get_contents($path);
+    _handle_participants($content);
+  }
+  else {
+    form_set_error('myform', t("Failed to save the file."));
+  }
+}
+
+function _handle_participants($content){
+  $names = preg_split("/((\r?\n)|(\r\n?))/", $content);
+  $participants = db_select('node','n')
+  ->fields('n')
+  ->condition('type', 'participant')->execute()->fetchAll();
+    
+  foreach ($names as $name) {
+    $exits = array_filter($participants, function($x) use($name){
+      return $x->title == $name;
+    });
+    if(!$exits){
+      $node = new stdClass();
+      $node->type = 'participant';
+      node_object_prepare($node);
+      $node->title = $name;
+      $node->language = LANGUAGE_NONE;
+      node_save($node);
+      drupal_set_message("Participant created: $name");
+    }
+  }
+  drupal_set_message("Participants saved");
+}

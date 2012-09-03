@@ -1,0 +1,8 @@
+name = Participants
+description = Implements import of participants
+core = 7.x
+version = 7.x-1.x
+package = Participants
+configure = admin/config/participants
+
+
