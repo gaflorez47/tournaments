@@ -1,5 +1,7 @@
 <?php
 
+require_once 'util.php';
+
 /**
  * Implements hook_menu().
  */
@@ -7,7 +9,7 @@ function participants_menu() {
   $items = array();
 
   $items['admin/config/participants/import'] = array(
-      'title' => 'Participants',
+      'title' => 'Import participants',
       'description' => 'Import participants',
       'page callback' => 'drupal_get_form',
       'page arguments' => array('participants_upload_form'),
@@ -15,10 +17,18 @@ function participants_menu() {
       'type' => MENU_NORMAL_ITEM
   );
   $items['admin/config/participants/add'] = array(
-      'title' => 'Participants',
+      'title' => 'Add participants to tournament',
       'description' => 'Import participants',
       'page callback' => 'drupal_get_form',
       'page arguments' => array('participants_add_form'),
+      'access arguments' => array('administer site configuration'),
+      'type' => MENU_NORMAL_ITEM
+  );
+  $items['admin/config/participants/match'] = array(
+      'title' => 'Fix match dates',
+      'description' => 'Import participants',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('participants_match_fix_form'),
       'access arguments' => array('administer site configuration'),
       'type' => MENU_NORMAL_ITEM
   );
@@ -27,19 +37,9 @@ function participants_menu() {
 }
 
 function participants_add_form(){
-  $participants = db_select('node','n')
-  ->fields('n')
-  ->condition('type', 'participant')->execute()->fetchAll();
-  $pk = array_map(function($x){return $x->nid;}, $participants);
-  $pv = array_map(function($x){return $x->title;}, $participants);
-  $participants_array = array_combine($pk, $pv);
-  
-  $tournaments = db_select('node','n')
-  ->fields('n')
-  ->condition('type', array('round_robin'), 'IN')->execute()->fetchAll();
-  $tk = array_map(function($x){return $x->nid;}, $tournaments);
-  $tv = array_map(function($x){return $x->title;}, $tournaments);
-  $tournaments_array = array_combine($tk, $tv);
+  $util = new ParticipantUtil();
+  $participants_array = $util->participants();
+  $tournaments_array = $util->tournaments();
   
   $form = array();
   $form['all_participants'] = array(
@@ -127,6 +127,7 @@ function participants_upload_form(){
 }
 
 function participants_upload_form_submit(){
+  $util = new ParticipantUtil();
   $validators = array('file_validate_extensions' => array());
   $file = file_save_upload('file_upload', $validators);
   //$file will be 0 if the upload doesn't exist, or the $dest directory
@@ -134,32 +135,92 @@ function participants_upload_form_submit(){
   if ($file) {
     $path = $file->destination;
     $content = file_get_contents($path);
-    _handle_participants($content);
+    $util->handle_participants($content);
   }
   else {
     form_set_error('myform', t("Failed to save the file."));
   }
 }
 
-function _handle_participants($content){
-  $names = preg_split("/((\r?\n)|(\r\n?))/", $content);
-  $participants = db_select('node','n')
-  ->fields('n')
-  ->condition('type', 'participant')->execute()->fetchAll();
-    
-  foreach ($names as $name) {
-    $exits = array_filter($participants, function($x) use($name){
-      return $x->title == $name;
-    });
-    if(!$exits){
-      $node = new stdClass();
-      $node->type = 'participant';
-      node_object_prepare($node);
-      $node->title = $name;
-      $node->language = LANGUAGE_NONE;
-      node_save($node);
-      drupal_set_message("Participant created: $name");
+
+function participants_match_fix_form(){
+  $form = array();
+  $util = new ParticipantUtil();
+  $tournaments_array = $util->tournaments();
+  $form['tournament'] = array(
+    '#type' => 'radios',
+    '#options' => $tournaments_array,
+    '#title' => t('Tournaments to add'),
+    '#default_value' => 1,
+  );
+  $form['start_date'] = array(
+    '#type' => 'date',
+    '#title' => t('Start date'),
+  );
+  
+  $form['start_hour'] = array(
+    '#type' => 'select',
+    '#options' => $util->hours_map(),
+    '#title' => t('Start Hour'),
+  );
+  $form['start_minute'] = array(
+    '#type' => 'select',
+    '#options' => $util->minutes_map(),
+    '#title' => t('Start Minute'),
+  );
+  $form['duration'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Match duration in minutes'),
+    '#default_value' => '15',
+  );
+  $form['n_matches'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Matches per day'),
+    '#default_value' => '3',
+  );
+  
+  $form['submit'] = array(
+    '#type'  =>  'submit', 
+    '#value'  =>  'Submit'
+  );
+  
+  return $form;
+}
+
+function participants_match_fix_form_submit($form, &$form_state){
+  $util = new ParticipantUtil();
+  $values = $form_state['values'];
+  $tid = $values['tournament'];
+  $start_date = $values['start_date'];
+  $hour = $values['start_hour'];
+  $minute = $values['start_minute'];
+  $duration = $values['duration'];
+  $matches = $util->matches($tid);
+  $n_day = intval($values['n_matches']);
+  
+  $i = 0;
+  $h = intval($hour);  
+  $m = intval($minute);
+  $month = intval($start_date['month']);  
+  $d = intval($start_date['day']);  
+  $y = intval($start_date['year']);
+  $initial_timestamp = mktime($h,$m, 0,$month,$d,$y);
+  $initial_timestamp = strtotime("-$m minutes",$initial_timestamp);
+  $time = $initial_timestamp;
+  $days = 0;
+  foreach ($matches as $match) {
+    $date = $match->match_date;
+    drupal_set_message(var_export(format_date($time),1));
+    //update
+    $update = db_update('matches')->fields(array('match_date' => $time,))->condition('nid', $match->nid)->execute();
+    $time = strtotime("+$duration minutes",$time);
+    $i++;
+    if($i==$n_day){
+      $i = 0;
+      do{
+        $days++;
+        $time = strtotime("+$days day",$initial_timestamp);
+      }while($util->isWeekend($time));
     }
   }
-  drupal_set_message("Participants saved");
 }
