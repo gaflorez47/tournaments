@@ -13,7 +13,7 @@ class ParticipantUtil{
   function tournaments(){
     $tournaments = db_select('node','n')
     ->fields('n')
-    ->condition('type', array('round_robin'), 'IN')->execute()->fetchAll();
+    ->condition('type', array('round_robin', 'tournament','knockout'), 'IN')->execute()->fetchAll();
     $tk = array_map(function($x){return $x->nid;}, $tournaments);
     $tv = array_map(function($x){return $x->title;}, $tournaments);
     $tournaments_array = array_combine($tk, $tv);
@@ -24,6 +24,7 @@ class ParticipantUtil{
     $matches = db_select('node','n');
     $matches->join('matches', 'm', 'n.nid = m.nid');
     $matches->fields('m');
+    $matches->condition('m.match_status', MATCH_STATUS_AWAITING_RESULT);
     $matches->orderBy('m.match_date', 'ASC');
     $matches = $matches->condition('m.tid', $tid)->execute()->fetchAll();
     return $matches;
